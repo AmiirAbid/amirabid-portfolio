@@ -39,78 +39,77 @@
 
   const USERNAME = 'AmiirAbid';
 
-  // Contribution data state
   let contributions = [];
   let totalThisYear = 0;
   let loading = true;
   let error = false;
   let isDark = false;
-  let tooltip = null; // { date, count, x, y }
+  let tooltip = null;
 
-  // Color scales for light and dark mode (GitHub-style intensity 0–4)
   const colorScale = {
     light: ['#ebedf0', '#9be9a8', '#40c463', '#30a14e', '#216e39'],
     dark:  ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'],
   };
 
   $: colors = isDark ? colorScale.dark : colorScale.light;
-
-  // Derive a 53-week grid (Sun→Sat columns) from flat contributions array
   $: weeks = buildWeeks(contributions);
+  $: monthLabels = buildMonthLabels(weeks);
 
-  function buildWeeks(contribs) {
-  if (!contribs.length) return [];
+  // SVG layout — viewBox-based so width is fully flexible
+  const CELL = 11;
+  const GAP = 3;
+  const STEP = CELL + GAP;
+  const LABEL_H = 20;
 
-  const sorted = [...contribs].sort((a, b) => a.date.localeCompare(b.date));
+  $: totalCols = weeks.length;
+  $: viewBoxWidth = totalCols * STEP;
+  $: viewBoxHeight = 7 * STEP + LABEL_H;
 
-  // End = today, start = exactly 365 days ago
-  const end = new Date();
-  end.setHours(0, 0, 0, 0);
-  const start = new Date(end);
-  start.setDate(start.getDate() - 364); // 365 days inclusive
-
-  const map = Object.fromEntries(
-    sorted
-      .filter(d => {
-        const t = new Date(d.date);
-        return t >= start && t <= end;
-      })
-      .map(d => [d.date, d])
+  $: cellFills = weeks.map(week =>
+    week.map(day => day ? colors[Math.min(parseInt(day.intensity ?? '0', 10), 4)] : null)
   );
 
-  // Rewind start to the nearest Sunday
-  const gridStart = new Date(start);
-  gridStart.setDate(gridStart.getDate() - gridStart.getDay());
+  function buildWeeks(contribs) {
+    if (!contribs.length) return [];
 
-  const result = [];
-  const current = new Date(gridStart);
+    const sorted = [...contribs].sort((a, b) => a.date.localeCompare(b.date));
 
-  while (current <= end) {
-    const week = [];
-    for (let i = 0; i < 7; i++) {
-      const key = current.toISOString().slice(0, 10);
-      const inRange = current >= start && current <= end;
-      week.push(
-        inRange
-          ? (map[key] ?? { date: key, count: 0, intensity: '0' })
-          : null // outside the 365-day window → render as empty
-      );
-      current.setDate(current.getDate() + 1);
+    const end = new Date();
+    end.setHours(0, 0, 0, 0);
+    const start = new Date(end);
+    start.setDate(start.getDate() - 364);
+
+    const map = Object.fromEntries(
+      sorted
+        .filter(d => { const t = new Date(d.date); return t >= start && t <= end; })
+        .map(d => [d.date, d])
+    );
+
+    const gridStart = new Date(start);
+    gridStart.setDate(gridStart.getDate() - gridStart.getDay());
+
+    const result = [];
+    const current = new Date(gridStart);
+
+    while (current <= end) {
+      const week = [];
+      for (let i = 0; i < 7; i++) {
+        const key = current.toISOString().slice(0, 10);
+        const inRange = current >= start && current <= end;
+        week.push(inRange ? (map[key] ?? { date: key, count: 0, intensity: '0' }) : null);
+        current.setDate(current.getDate() + 1);
+      }
+      result.push(week);
     }
-    result.push(week);
+    return result;
   }
-  return result;
-}
-
-  // Month labels: find first week where month changes
-  $: monthLabels = buildMonthLabels(weeks);
 
   function buildMonthLabels(weeks) {
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const labels = [];
     let lastMonth = -1;
     weeks.forEach((week, i) => {
-      const firstDay = week.find(d => d != null && d.date);
+      const firstDay = week.find(d => d != null);
       if (!firstDay) return;
       const m = new Date(firstDay.date).getMonth();
       if (m !== lastMonth) {
@@ -127,11 +126,7 @@
   }
 
   function showTooltip(event, day) {
-    if (!day.count && day.intensity === '0') {
-      tooltip = { date: day.date, count: 0 };
-    } else {
-      tooltip = { date: day.date, count: day.count ?? 0 };
-    }
+    tooltip = { date: day.date, count: day.count ?? 0 };
   }
 
   function hideTooltip() {
@@ -142,11 +137,10 @@
     loading = true;
     error = false;
     try {
-      const res = await fetch(`/api/github`);
+      const res = await fetch('/api/github');
       if (!res.ok) throw new Error('Non-200');
       const json = await res.json();
       contributions = json.contributions ?? [];
-      // Total for current year
       const currentYear = new Date().getFullYear().toString();
       const yearData = (json.years ?? []).find(y => y.year === currentYear);
       totalThisYear = yearData?.total ?? 0;
@@ -158,38 +152,23 @@
   }
 
   onMount(() => {
-    // Detect dark mode from OS
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    isDark = mq.matches;
-    const mqHandler = (e) => { isDark = e.matches; };
-    mq.addEventListener('change', mqHandler);
-
-    // Also watch for data-theme / class on <html> (app-level theme toggle)
     const html = document.documentElement;
-    const observer = new MutationObserver(() => {
-      const theme = html.getAttribute('data-theme') ?? '';
-      const cls = html.className ?? '';
-      isDark = theme.includes('dark') || cls.includes('dark');
-    });
-    observer.observe(html, { attributes: true, attributeFilter: ['data-theme', 'class'] });
+
+    function syncTheme() {
+      isDark = html.getAttribute('data-theme') === 'dark';
+    }
+
+    // Read whatever the toggle already set before this component mounted
+    syncTheme();
+
+    // Fire on every data-theme change — same attribute your toggle writes to
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(html, { attributes: true, attributeFilter: ['data-theme'] });
 
     fetchContributions();
 
-    return () => {
-      mq.removeEventListener('change', mqHandler);
-      observer.disconnect();
-    };
+    return () => observer.disconnect();
   });
-
-  // SVG layout constants
-  const CELL = 11;
-  const GAP = 3;
-  const STEP = CELL + GAP;
-  const LABEL_H = 20; // space for month labels above
-  const DAY_LABEL_W = 0; // no day labels for compactness
-
-  $: svgWidth = weeks.length * STEP;
-  $: svgHeight = 7 * STEP + LABEL_H;
 </script>
 
 <section class="projects section" id="projects" aria-labelledby="projects-heading">
@@ -246,12 +225,12 @@
         <div class="graph-scroll">
           <!-- svelte-ignore a11y-no-static-element-interactions -->
           <svg
-            width={svgWidth}
-            height={svgHeight}
+            viewBox="0 0 {viewBoxWidth} {viewBoxHeight}"
+            preserveAspectRatio="xMinYMid meet"
+            width="100%"
             role="img"
             aria-label="GitHub contribution graph for {USERNAME}"
           >
-            <!-- Month labels -->
             {#each monthLabels as { label, col }}
               <text
                 x={col * STEP}
@@ -262,7 +241,6 @@
               >{label}</text>
             {/each}
 
-            <!-- Cells -->
             {#each weeks as week, wi}
               {#each week as day, di}
                 {#if day}
@@ -273,13 +251,12 @@
                     height={CELL}
                     rx="2"
                     ry="2"
-                    fill={cellColor(day)}
+                    fill={cellFills[wi][di]}
                     onmouseenter={(e) => showTooltip(e, day)}
                     onmouseleave={hideTooltip}
                     aria-label="{day.count ?? 0} contributions on {day.date}"
                   />
                 {:else}
-                  <!-- empty cell outside range, render transparent placeholder -->
                   <rect
                     x={wi * STEP}
                     y={LABEL_H + di * STEP}
@@ -293,7 +270,6 @@
             {/each}
           </svg>
 
-          <!-- Tooltip -->
           {#if tooltip}
             <div class="graph-tooltip">
               <strong>{tooltip.count} contribution{tooltip.count !== 1 ? 's' : ''}</strong>
@@ -302,11 +278,10 @@
           {/if}
         </div>
 
-        <!-- Legend -->
         <div class="graph-legend">
           <span>Less</span>
           {#each colors as c}
-            <svg width="11" height="11">
+            <svg width="11" height="11" aria-hidden="true">
               <rect width="11" height="11" rx="2" fill={c} />
             </svg>
           {/each}
@@ -333,15 +308,11 @@
   }
 
   @media (min-width: 640px) {
-    .project-cards {
-      grid-template-columns: repeat(2, 1fr);
-    }
+    .project-cards { grid-template-columns: repeat(2, 1fr); }
   }
 
   @media (min-width: 1024px) {
-    .project-cards {
-      grid-template-columns: repeat(3, 1fr);
-    }
+    .project-cards { grid-template-columns: repeat(3, 1fr); }
   }
 
   .project-card {
@@ -361,21 +332,11 @@
     margin-bottom: 0.5rem;
   }
 
-  .project-icon {
-    color: var(--accent);
-    flex-shrink: 0;
-  }
+  .project-icon { color: var(--accent); flex-shrink: 0; }
 
-  .project-card h3 {
-    margin: 0;
-    font-size: 1.1rem;
-  }
+  .project-card h3 { margin: 0; font-size: 1.1rem; }
 
-  .project-card p {
-    flex: 1;
-    margin-bottom: 1rem;
-    font-size: 0.9rem;
-  }
+  .project-card p { flex: 1; margin-bottom: 1rem; font-size: 0.9rem; }
 
   .tech-badges {
     display: flex;
@@ -392,7 +353,6 @@
     color: var(--text-muted);
   }
 
-  /* ── GitHub Section ── */
   .github-section {
     margin-top: 3rem;
     padding-top: 2rem;
@@ -407,35 +367,28 @@
     flex-wrap: wrap;
   }
 
-  .github-header h3 {
-    margin: 0;
-  }
+  .github-header h3 { margin: 0; }
 
-  .contrib-count {
-    font-size: 0.85rem;
-    color: var(--text-muted);
-  }
+  .contrib-count { font-size: 0.85rem; color: var(--text-muted); }
 
   .github-graph {
     border-radius: var(--radius);
-    overflow: hidden;
     background: var(--bg-secondary);
     border: 1px solid var(--glass-border);
     padding: 1rem 1.25rem 0.75rem;
   }
 
-  /* Scroll wrapper so the graph is never clipped on small screens */
   .graph-scroll {
-    overflow-x: auto;
     position: relative;
-    padding-bottom: 0.25rem;
+    width: 100%;
   }
 
   .graph-scroll svg {
     display: block;
+    width: 100%;
+    height: auto;
   }
 
-  /* Tooltip */
   .graph-tooltip {
     position: absolute;
     bottom: calc(100% + 6px);
@@ -449,9 +402,9 @@
     white-space: nowrap;
     pointer-events: none;
     color: var(--text-primary, inherit);
+    z-index: 10;
   }
 
-  /* Legend */
   .graph-legend {
     display: flex;
     align-items: center;
@@ -462,21 +415,11 @@
     color: var(--text-muted);
   }
 
-  /* Loading skeleton */
-  .graph-placeholder {
-    padding: 0.5rem 0;
-  }
+  .graph-placeholder { padding: 0.5rem 0; }
 
-  .skeleton-grid {
-    display: flex;
-    gap: 3px;
-  }
+  .skeleton-grid { display: flex; gap: 3px; }
 
-  .skeleton-col {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
+  .skeleton-col { display: flex; flex-direction: column; gap: 3px; }
 
   .skeleton-cell {
     width: 11px;
@@ -491,7 +434,6 @@
     50% { opacity: 1; }
   }
 
-  /* Error state */
   .graph-error {
     display: flex;
     align-items: center;
