@@ -59,36 +59,48 @@
   $: weeks = buildWeeks(contributions);
 
   function buildWeeks(contribs) {
-    if (!contribs.length) return [];
+  if (!contribs.length) return [];
 
-    // Sort ascending
-    const sorted = [...contribs].sort((a, b) => a.date.localeCompare(b.date));
+  const sorted = [...contribs].sort((a, b) => a.date.localeCompare(b.date));
 
-    // Keep only the last 52 weeks + current partial week
-    const end = new Date(sorted[sorted.length - 1].date);
-    const start = new Date(end);
-    start.setDate(start.getDate() - 364); // 52 weeks back
+  // End = today, start = exactly 365 days ago
+  const end = new Date();
+  end.setHours(0, 0, 0, 0);
+  const start = new Date(end);
+  start.setDate(start.getDate() - 364); // 365 days inclusive
 
-    const filtered = sorted.filter(d => new Date(d.date) >= start);
+  const map = Object.fromEntries(
+    sorted
+      .filter(d => {
+        const t = new Date(d.date);
+        return t >= start && t <= end;
+      })
+      .map(d => [d.date, d])
+  );
 
-    // Group into weeks (each week starts on Sunday)
-    const map = Object.fromEntries(filtered.map(d => [d.date, d]));
-    const result = [];
-    let current = new Date(start);
-    // Rewind to previous Sunday
-    current.setDate(current.getDate() - current.getDay());
+  // Rewind start to the nearest Sunday
+  const gridStart = new Date(start);
+  gridStart.setDate(gridStart.getDate() - gridStart.getDay());
 
-    while (current <= end) {
-      const week = [];
-      for (let i = 0; i < 7; i++) {
-        const key = current.toISOString().slice(0, 10);
-        week.push(map[key] ?? { date: key, count: 0, intensity: '0' });
-        current.setDate(current.getDate() + 1);
-      }
-      result.push(week);
+  const result = [];
+  const current = new Date(gridStart);
+
+  while (current <= end) {
+    const week = [];
+    for (let i = 0; i < 7; i++) {
+      const key = current.toISOString().slice(0, 10);
+      const inRange = current >= start && current <= end;
+      week.push(
+        inRange
+          ? (map[key] ?? { date: key, count: 0, intensity: '0' })
+          : null // outside the 365-day window → render as empty
+      );
+      current.setDate(current.getDate() + 1);
     }
-    return result;
+    result.push(week);
   }
+  return result;
+}
 
   // Month labels: find first week where month changes
   $: monthLabels = buildMonthLabels(weeks);
@@ -253,17 +265,30 @@
             <!-- Cells -->
             {#each weeks as week, wi}
               {#each week as day, di}
-                <!-- svelte-ignore a11y-no-static-element-interactions -->
-                <rect
-                  x={wi * STEP}
-                  y={LABEL_H + di * STEP}
-                  width={CELL}
-                  height={CELL}
-                  rx="2"
-                  ry="2"
-                  fill={cellColor(day)}
-                  aria-label="{day.count ?? 0} contributions on {day.date}"
-                />
+                {#if day}
+                  <rect
+                    x={wi * STEP}
+                    y={LABEL_H + di * STEP}
+                    width={CELL}
+                    height={CELL}
+                    rx="2"
+                    ry="2"
+                    fill={cellColor(day)}
+                    onmouseenter={(e) => showTooltip(e, day)}
+                    onmouseleave={hideTooltip}
+                    aria-label="{day.count ?? 0} contributions on {day.date}"
+                  />
+                {:else}
+                  <!-- empty cell outside range, render transparent placeholder -->
+                  <rect
+                    x={wi * STEP}
+                    y={LABEL_H + di * STEP}
+                    width={CELL}
+                    height={CELL}
+                    rx="2"
+                    fill="transparent"
+                  />
+                {/if}
               {/each}
             {/each}
           </svg>
