@@ -1,0 +1,8 @@
+{
+    "rewrites": [
+      {
+        "source": "/api/github",
+        "destination": "https://github-contributions.vercel.app/api/v1/AmiirAbid"
+      }
+    ]
+  }
