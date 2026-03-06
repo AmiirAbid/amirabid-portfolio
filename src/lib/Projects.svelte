@@ -110,7 +110,7 @@
     const labels = [];
     let lastMonth = -1;
     weeks.forEach((week, i) => {
-      const firstDay = week.find(d => d.date);
+      const firstDay = week.find(d => d != null && d.date);
       if (!firstDay) return;
       const m = new Date(firstDay.date).getMonth();
       if (m !== lastMonth) {
