@@ -131,6 +131,7 @@
   }
 
   .panel {
+    opacity: 0.7;
     position: relative;
     width: 100%;
     max-width: 440px;
