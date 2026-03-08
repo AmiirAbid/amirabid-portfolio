@@ -32,7 +32,7 @@
 
   <div class="nav-actions">
     <ThemeToggle />
-    <a href="/cv.pdf" class="btn-secondary" download>
+    <a href="/Amir Abid CV.pdf" class="btn-secondary" download>
       <FileDown size={18} aria-hidden="true" />
       Download CV
     </a>
@@ -63,7 +63,7 @@
     {#each navLinks as link}
       <a href={link.href} onclick={closeMobileMenu}>{link.label}</a>
     {/each}
-    <a href="/cv.pdf" class="btn-secondary" download onclick={closeMobileMenu}>
+    <a href="/Amir Abid CV.pdf" class="btn-secondary" download onclick={closeMobileMenu}>
       <FileDown size={18} />
       Download CV
     </a>

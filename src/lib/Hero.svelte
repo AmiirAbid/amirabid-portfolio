@@ -17,7 +17,7 @@
           <MessageCircle size={20} aria-hidden="true" />
           Contact Me
         </button>
-        <a href="/cv.pdf" class="btn-secondary" download>
+        <a href="/Amir Abid CV.pdf" class="btn-secondary" download>
           <FileDown size={20} aria-hidden="true" />
           Download CV
         </a>
