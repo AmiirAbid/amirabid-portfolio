@@ -4,7 +4,7 @@
   const phone = '+216 96 592 443';
   const email = 'amirabid401@gmail.com';
   const linkedInUrl = 'https://www.linkedin.com/in/amir-abid'; // placeholder
-  const githubUrl = 'https://github.com/amirabid'; // placeholder
+  const githubUrl = 'https://github.com/amiirabid'; // placeholder
   const whatsappNumber = '21696592443';
   const whatsappUrl = `https://wa.me/${whatsappNumber}`;
 </script>
